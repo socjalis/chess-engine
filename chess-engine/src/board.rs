@@ -1,11 +1,16 @@
-use std::fmt::format;
+use crate::board::masks::{EIGHTH_RANK, SECOND_RANK, SEVENTH_RANK};
 use crate::board::moves::{construct_move, PromotionPiece, SpecialMove};
 
 pub mod squares;
 mod pieces;
 pub mod moves;
 pub mod fen;
+pub mod masks;
 
+// 0-5 - destination
+// 6-11 - origin
+// 12-13 - promotion piece type (0-Knight, 1-Bishop, 2-Rook, 3-Queen)
+// 14-15 - special move flag (1-promotion, 2-en passant, 3-castling)
 type Move = u16;
 
 pub trait Board {
@@ -61,48 +66,89 @@ impl Board for BitBoard {
 // 12-13 - promotion piece type (0-Knight, 1-Bishop, 2-Rook, 3-Queen)
 // 14-15 - special move flag (1-promotion, 2-en passant, 3-castling)
 impl BitBoard {
-    pub fn get_legal_white_pawn_moves(&self) {
+    pub fn get_legal_white_pawn_moves(&self) -> Vec<Move> {
         let white_pieces = self.white_king & self.white_knights & self.white_pawns & self.white_bishops & self.white_queens & self.white_rooks;
         let black_pieces = self.black_king & self.black_knights & self.black_pawns & self.black_bishops & self.black_queens & self.black_rooks;
 
-        let white_1_pushes = (|| {
-            let mask = u64::MAX >> 16;
+        let mut pawn_moves: Vec<Move> = Vec::new();
 
-            let eligible_pawns = self.white_pawns & mask;
-            let pushed_bitboard = eligible_pawns << 8;
+        // TODO might be faster without Vec heap usage, use fixed array instead
+        {
+            let pushed_bitboard = self.white_pawns << 8;
             let squares = pushed_bitboard & !(white_pieces | black_pieces);
             let pawn_squares = get_ones_indices(&squares);
 
-            let moves: Vec<Move> = pawn_squares.iter().map(|&dest| {
-                return construct_move(dest as u8, (dest << 3) as u8, PromotionPiece::Knight, SpecialMove::None);
-            }).collect();
+            pawn_squares.iter().for_each(|&dest| {
+                if dest < 56 {
+                    pawn_moves.push(construct_move(dest as u8, (dest >> 3) as u8, PromotionPiece::Knight, SpecialMove::None));
+                }
+                if dest >= 56 {
+                    pawn_moves.push(construct_move(dest as u8, (dest >> 3) as u8, PromotionPiece::Knight, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest >> 3) as u8, PromotionPiece::Bishop, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest >> 3) as u8, PromotionPiece::Rook, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest >> 3) as u8, PromotionPiece::Queen, SpecialMove::Promotion));
+                }
+            });
+        }
 
-            // let c = moves.iter().map(|&a| {
-            //     return format!("{:b}", a);
-            // }).collect::<Vec<String>>();
-
-            // println!("dupa1 {:?}", c);
-        })();
-
-        let pawn_moves: Vec<Move> = Vec::new();
-
-        let white_2_pushes = (|| {
-            let second_line_mask = u64::MAX >> 48;
-
-            let eligible_pawns = self.white_pawns & second_line_mask;
+        {
+            let eligible_pawns = self.white_pawns & SECOND_RANK;
             let pushed_bitboard = eligible_pawns << 8;
             let pushed_2_bitboard = eligible_pawns << 16;
             let squares = pushed_2_bitboard & !(white_pieces | black_pieces)
                 & ((pushed_bitboard & !(white_pieces | black_pieces)) << 8);
 
             let pawn_squares = get_ones_indices(&squares);
-            let moves: Vec<Move> = pawn_squares.iter().map(|&dest| {
-                return construct_move(dest as u8, (dest << 4) as u8, PromotionPiece::Knight, SpecialMove::None);
-            }).collect();
-            println!("dupa2 {:?}", moves);
-        })();
 
-        fn get_2_pushes() {}
+            // TODO probably can by optimized
+            pawn_squares.iter().for_each(|&dest| {
+                if dest < 56 {
+                    pawn_moves.push(construct_move(dest as u8, (dest >> 4) as u8, PromotionPiece::Knight, SpecialMove::None));
+                }
+                if dest >= 56 {
+                    pawn_moves.push(construct_move(dest as u8, (dest >> 4) as u8, PromotionPiece::Knight, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest >> 4) as u8, PromotionPiece::Bishop, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest >> 4) as u8, PromotionPiece::Rook, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest >> 4) as u8, PromotionPiece::Queen, SpecialMove::Promotion));
+                }
+            });
+        }
+
+        {
+            const MASK: u64 = !(SEVENTH_RANK | EIGHTH_RANK);
+            let pawn_attack_squares = self.white_pawns << 9 & MASK;
+            let pawn_squares = get_ones_indices(&pawn_attack_squares);
+            pawn_squares.iter().for_each(|&dest| {
+                if dest < 56 {
+                    pawn_moves.push(construct_move(dest as u8, (dest - 9) as u8, PromotionPiece::Knight, SpecialMove::None));
+                }
+                if dest >= 56 {
+                    pawn_moves.push(construct_move(dest as u8, (dest - 9) as u8, PromotionPiece::Knight, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest - 9) as u8, PromotionPiece::Bishop, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest - 9) as u8, PromotionPiece::Rook, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest - 9) as u8, PromotionPiece::Queen, SpecialMove::Promotion));
+                }
+            });
+        }
+
+        {
+            const MASK: u64 = !(SEVENTH_RANK | EIGHTH_RANK);
+            let pawn_attack_squares = self.white_pawns << 7 & MASK;
+            let pawn_squares = get_ones_indices(&pawn_attack_squares);
+            pawn_squares.iter().for_each(|&dest| {
+                if dest < 56 {
+                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Knight, SpecialMove::None));
+                }
+                if dest >= 56 {
+                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Knight, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Bishop, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Rook, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Queen, SpecialMove::Promotion));
+                }
+            });
+        }
+
+        return pawn_moves;
     }
 }
 
