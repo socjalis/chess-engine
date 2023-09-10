@@ -1,5 +1,10 @@
-use crate::board::masks::{EIGHTH_RANK, SECOND_RANK, SEVENTH_RANK};
+use std::mem::transmute;
+use std::ops::BitXor;
+use bitvec::macros::internal::funty::Fundamental;
+use bitvec::view::BitViewSized;
+use crate::board::masks::{A_FILE, H_FILE, SECOND_RANK};
 use crate::board::moves::{construct_move, PromotionPiece, SpecialMove};
+use crate::board::pieces::{Piece, piece_to_str, PieceType};
 
 pub mod squares;
 mod pieces;
@@ -7,10 +12,10 @@ pub mod moves;
 pub mod fen;
 pub mod masks;
 
-// 0-5 - destination
-// 6-11 - origin
-// 12-13 - promotion piece type (0-Knight, 1-Bishop, 2-Rook, 3-Queen)
-// 14-15 - special move flag (1-promotion, 2-en passant, 3-castling)
+// 0-1 - special move flag (1-promotion, 2-en passant, 3-castling)
+// 2-3 - promotion piece type (0-Knight, 1-Bishop, 2-Rook, 3-Queen)
+// 4-9 - origin
+// 10-15 - destination
 type Move = u16;
 
 pub trait Board {
@@ -20,18 +25,10 @@ pub trait Board {
 }
 
 pub struct BitBoard {
-    white_pawns: u64,
-    white_knights: u64,
-    white_bishops: u64,
-    white_rooks: u64,
-    white_queens: u64,
-    white_king: u64,
-    black_pawns: u64,
-    black_knights: u64,
-    black_bishops: u64,
-    black_rooks: u64,
-    black_queens: u64,
-    black_king: u64,
+    pieces: [u8; 64],
+    pieces_bb: [[u64; 6]; 2],
+
+    black_to_move: bool,
 
     white_o_o: bool,
     white_o_o_o: bool,
@@ -39,8 +36,6 @@ pub struct BitBoard {
     black_o_o_o: bool,
 
     en_passant: u64,
-
-    white_to_move: bool,
 
     half_moves: u16,
     full_moves: u16,
@@ -61,38 +56,123 @@ impl Board for BitBoard {
     }
 }
 
-// 0-5 - destination
-// 6-11 - origin
-// 12-13 - promotion piece type (0-Knight, 1-Bishop, 2-Rook, 3-Queen)
-// 14-15 - special move flag (1-promotion, 2-en passant, 3-castling)
+// 0-1 - special move flag (1-promotion, 2-en passant, 3-castling)
+// 2-3 - promotion piece type (0-Knight, 1-Bishop, 2-Rook, 3-Queen)
+// 4-9 - origin
+// 10-15 - destination
 impl BitBoard {
+    // TODO optimize
+    pub fn print(&self) {
+        let mut board_string  = String::new();
+
+        for file in 0..8 {
+            for rank in 0..8 {
+                board_string.push_str(piece_to_str((unsafe{transmute(self.pieces[(7 - file) * 8 + rank])} )));
+                board_string.push_str(" ");
+            }
+            board_string.push_str("\n");
+        }
+        println!("{}", board_string);
+    }
+
+    pub fn make_move(&mut self, mov: Move) {
+        let dest: usize = (mov >> 10) as usize;
+        let origin: usize = ((mov & 0b1111110000) >> 4) as usize;
+        let promotion_piece_type: u8 = (mov & 0b1100 + 10) as u8;
+        let special_move_flag: SpecialMove = unsafe {transmute((mov & 0b000011) as u8) };
+
+        let dest_mask = 1_u64 << dest;
+        let dest_anti_mask = !(dest_mask);
+        let origin_mask = 1_u64 << origin;
+        let origin_anti_mask = !(origin_mask);
+
+        let current = !self.black_to_move as usize;
+        let opponent = self.black_to_move as usize;
+
+        let dest_piece = self.pieces[dest] ^ (1 << 7);
+
+        let dest_piece_type = ((dest_piece - self.black_to_move.as_u8()) >> 2) as usize;
+
+        let origin_piece = self.pieces[origin];
+        let origin_piece_type = ((origin_piece - self.black_to_move.as_u8()) >> 2) as usize;
+
+        // remove attacked piece
+        self.pieces_bb[opponent][dest_piece_type] ^= dest_mask;
+
+        // remove moved piece
+        self.pieces_bb[current][origin_piece_type] ^= origin_mask;
+        self.pieces[origin] = Piece::Empty as u8;
+
+        // normal move
+        self.pieces_bb[current][origin_piece_type] ^= (special_move_flag == SpecialMove::None) as u64 * dest_mask;
+        self.pieces[dest] = (special_move_flag == SpecialMove::None) as u8 * origin_piece;
+
+        // promotion
+        self.pieces_bb[current][promotion_piece_type as usize] ^= (special_move_flag == SpecialMove::Promotion) as u64 * dest_mask;
+        self.pieces[dest] = (special_move_flag == SpecialMove::Promotion) as u8 * ((promotion_piece_type) << 2) + (self.black_to_move as u8);
+
+        // castling
+        if special_move_flag == SpecialMove::Castle {
+            self.pieces_bb[current][PieceType::King as usize] ^= dest_mask;
+            self.pieces[dest] = (special_move_flag == SpecialMove::None) as u8 * origin_piece;
+
+            if origin > dest {
+                self.pieces_bb[current][PieceType::Rook as usize] ^= (dest_mask >> 2) + (dest_mask << 1);
+                self.pieces[dest - 2] = Piece::Empty as u8;
+                self.pieces[dest + 1] = Piece:: WhiteRook as u8 + self.black_to_move as u8;
+            }
+            else {
+                self.pieces_bb[current][PieceType::Rook as usize] ^= (dest_mask << 1) + (dest_mask >> 1);
+
+                self.pieces[dest + 1] = Piece::Empty as u8;
+                self.pieces[dest - 1] = Piece:: WhiteRook as u8 + self.black_to_move as u8;
+            }
+        }
+
+        // TODO en passant
+
+        self.black_to_move = !self.black_to_move;
+    }
     pub fn get_legal_white_pawn_moves(&self) -> Vec<Move> {
-        let white_pieces = self.white_king & self.white_knights & self.white_pawns & self.white_bishops & self.white_queens & self.white_rooks;
-        let black_pieces = self.black_king & self.black_knights & self.black_pawns & self.black_bishops & self.black_queens & self.black_rooks;
+        let white_pawns = self.pieces_bb[0][PieceType::Pawn as usize];
+        let white_pieces = white_pawns
+            & self.pieces_bb[0][PieceType::Knight as usize]
+            & self.pieces_bb[0][PieceType::Bishop as usize]
+            & self.pieces_bb[0][PieceType::Rook as usize]
+            & self.pieces_bb[0][PieceType::King as usize];
+        let black_pieces = self.pieces_bb[1][PieceType::Pawn as usize]
+            & self.pieces_bb[1][PieceType::Knight as usize]
+            & self.pieces_bb[1][PieceType::Bishop as usize]
+            & self.pieces_bb[1][PieceType::Rook as usize]
+            & self.pieces_bb[1][PieceType::King as usize];
 
         let mut pawn_moves: Vec<Move> = Vec::new();
 
-        // TODO might be faster without Vec heap usage, use fixed array instead
+        // TODO might be faster without Vec heap usage, use fixed array instead?
+
+        // push 1 square
         {
-            let pushed_bitboard = self.white_pawns << 8;
+            let pushed_bitboard = white_pawns << 8;
             let squares = pushed_bitboard & !(white_pieces | black_pieces);
             let pawn_squares = get_ones_indices(&squares);
 
             pawn_squares.iter().for_each(|&dest| {
+                let origin = dest - 8;
                 if dest < 56 {
-                    pawn_moves.push(construct_move(dest as u8, (dest >> 3) as u8, PromotionPiece::Knight, SpecialMove::None));
+                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::None));
                 }
                 if dest >= 56 {
-                    pawn_moves.push(construct_move(dest as u8, (dest >> 3) as u8, PromotionPiece::Knight, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest as u8, (dest >> 3) as u8, PromotionPiece::Bishop, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest as u8, (dest >> 3) as u8, PromotionPiece::Rook, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest as u8, (dest >> 3) as u8, PromotionPiece::Queen, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Bishop, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Rook, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Queen, SpecialMove::Promotion));
                 }
             });
         }
 
+        // push 2 squares
         {
-            let eligible_pawns = self.white_pawns & SECOND_RANK;
+            let eligible_pawns = white_pawns & SECOND_RANK;
             let pushed_bitboard = eligible_pawns << 8;
             let pushed_2_bitboard = eligible_pawns << 16;
             let squares = pushed_2_bitboard & !(white_pieces | black_pieces)
@@ -102,38 +182,42 @@ impl BitBoard {
 
             // TODO probably can by optimized
             pawn_squares.iter().for_each(|&dest| {
+                let origin = dest - 16;
                 if dest < 56 {
-                    pawn_moves.push(construct_move(dest as u8, (dest >> 4) as u8, PromotionPiece::Knight, SpecialMove::None));
+                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::None));
                 }
                 if dest >= 56 {
-                    pawn_moves.push(construct_move(dest as u8, (dest >> 4) as u8, PromotionPiece::Knight, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest as u8, (dest >> 4) as u8, PromotionPiece::Bishop, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest as u8, (dest >> 4) as u8, PromotionPiece::Rook, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest as u8, (dest >> 4) as u8, PromotionPiece::Queen, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Bishop, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Rook, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Queen, SpecialMove::Promotion));
                 }
             });
         }
 
+        // attack left
         {
-            const MASK: u64 = !(SEVENTH_RANK | EIGHTH_RANK);
-            let pawn_attack_squares = self.white_pawns << 9 & MASK;
+            let eligible_pawns = white_pawns & !A_FILE;
+
+            let pawn_attack_squares = eligible_pawns << 7 & black_pieces;
             let pawn_squares = get_ones_indices(&pawn_attack_squares);
             pawn_squares.iter().for_each(|&dest| {
                 if dest < 56 {
-                    pawn_moves.push(construct_move(dest as u8, (dest - 9) as u8, PromotionPiece::Knight, SpecialMove::None));
+                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Knight, SpecialMove::None));
                 }
                 if dest >= 56 {
-                    pawn_moves.push(construct_move(dest as u8, (dest - 9) as u8, PromotionPiece::Knight, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest as u8, (dest - 9) as u8, PromotionPiece::Bishop, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest as u8, (dest - 9) as u8, PromotionPiece::Rook, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest as u8, (dest - 9) as u8, PromotionPiece::Queen, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Knight, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Bishop, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Rook, SpecialMove::Promotion));
+                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Queen, SpecialMove::Promotion));
                 }
             });
         }
 
+        // attack right
         {
-            const MASK: u64 = !(SEVENTH_RANK | EIGHTH_RANK);
-            let pawn_attack_squares = self.white_pawns << 7 & MASK;
+            let eligible_pawns = self.pieces_bb[0][PieceType::Pawn as usize] & !H_FILE;
+            let pawn_attack_squares = eligible_pawns << 7 & black_pieces;
             let pawn_squares = get_ones_indices(&pawn_attack_squares);
             pawn_squares.iter().for_each(|&dest| {
                 if dest < 56 {
@@ -152,12 +236,12 @@ impl BitBoard {
     }
 }
 
-pub fn get_ones_indices(bitboard: &u64) -> Vec<u32> {
+pub fn get_ones_indices(bitboard: &u64) -> Vec<u8> {
     let mut num = *bitboard;
-    let mut vec: Vec<u32> = Vec::new();
-    let mut shift = 0_u32;
+    let mut vec: Vec<u8> = Vec::new();
+    let mut shift = 0_u8;
     while num != 0 {
-        let position = num.trailing_zeros();
+        let position = num.trailing_zeros() as u8;
         num = num >> (position + 1);
         shift += position;
         vec.push(shift);
