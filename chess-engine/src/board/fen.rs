@@ -105,8 +105,7 @@ pub fn create_bitboard_from_fen(fen: &str) -> BitBoard {
         white_o_o_o,
         black_o_o,
         black_o_o_o,
-        // TODO
-        en_passant: 0,
+        en_passant: get_en_passant_from_fen(fen_en_passant),
         half_moves: fen_half_moves.parse().unwrap(),
         full_moves: fen_full_moves.parse().unwrap(),
     };
@@ -210,4 +209,56 @@ fn get_castles_from_fen(castles_fen: &str) -> (bool, bool, bool, bool) {
         black_o_o,
         black_o_o_o
     );
+}
+
+fn get_en_passant_from_fen(en_passant_fen: &str) -> u64 {
+    if en_passant_fen == "-" {
+        return 0;
+    }
+    assert!(en_passant_fen.len() == 2, "Incorrect en passant length {}", en_passant_fen);
+
+    let first_char = en_passant_fen.chars().nth(0).unwrap();
+    let second_char = en_passant_fen.chars().nth(1).unwrap();
+    let is_proper_letter = |c: char| -> bool { c.is_ascii() && 'a' <= c && 'h' >= c };
+    let is_proper_number = |c: char| -> bool { c.is_ascii_digit() && c != '0' && c != '9'};
+    assert!(is_proper_letter(first_char), "Incorrect first character of en passant {}", en_passant_fen);
+    assert!(is_proper_number(second_char), "Incorrect number of en passant {}", en_passant_fen);
+
+    let column_shift: u64 = first_char as u64 - 'a' as u64;
+    let rank_shift: u64 = (second_char.to_digit(10).unwrap() - 1) as u64 * 8_u64;
+    let en_passant_square: u64 = 1 << (rank_shift + column_shift);
+
+    return en_passant_square;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_en_passant_from_fen_correct_input() {
+        assert_eq!(get_en_passant_from_fen("-"), 0);
+        assert_eq!(get_en_passant_from_fen("a1"), 1);
+        assert_eq!(get_en_passant_from_fen("b1"), 2);
+        assert_eq!(get_en_passant_from_fen("a2"), 2_u64.pow(8));
+        assert_eq!(get_en_passant_from_fen("h8"), 2_u64.pow(63));
+    }
+
+    #[test]
+    #[should_panic(expected = "Incorrect en passant length xd2137")]
+    fn test_get_en_passant_from_incorrect_fen_too_long() {
+        get_en_passant_from_fen("xd2137");
+    }
+
+    #[test]
+    #[should_panic(expected = "Incorrect first character of en passant i4")]
+    fn test_get_en_passant_from_incorrect_fen_first_character() {
+        get_en_passant_from_fen("i4");
+    }
+
+    #[test]
+    #[should_panic(expected = "Incorrect number of en passant a9")]
+    fn test_get_en_passant_from_fen_incorrect_number() {
+        get_en_passant_from_fen("a9");
+    }
 }
