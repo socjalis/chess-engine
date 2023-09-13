@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 pub fn piece_to_str(piece: Piece) -> &'static str {
     return match piece {
         Piece::WhitePawn => { "P" }

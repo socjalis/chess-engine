@@ -20,6 +20,8 @@ pub fn create_bitboard_from_fen(fen: &str) -> BitBoard {
         black_king
     ) = get_pieces_from_fen(fen_pieces);
 
+    println!("xdd {:b}", white_pawns);
+
     let (
         white_o_o,
         white_o_o_o,
@@ -77,7 +79,8 @@ pub fn create_bitboard_from_fen(fen: &str) -> BitBoard {
         pieces[*idx as usize] = Piece::BlackKing as u8;
     });
 
-    println!("{:?}", pieces);
+
+    println!("dupa {:?}", pieces[16]);
 
     return BitBoard {
         pieces_bb: [[
@@ -126,9 +129,9 @@ fn get_pieces_from_fen(fen_pieces: &str) -> (u64, u64, u64, u64, u64, u64, u64, 
     for (line, part) in fen_pieces.split("/").enumerate() {
         let mut offset: u64 = 0;
         fn get_position(column: u64, row: u64) -> u64 {
-            // println!("bit idx {}, number {}", (7 - column) * 8 + row, 1_u64 << (7 - column) * 8 + row);
             return 1_u64 << (7 - column) * 8 + row;
         }
+
         for (idx, ch) in part.chars().enumerate() {
             let number = get_position(line as u64, offset + idx as u64);
 
@@ -169,9 +172,8 @@ fn get_pieces_from_fen(fen_pieces: &str) -> (u64, u64, u64, u64, u64, u64, u64, 
                 'k' => {
                     black_king |= number;
                 }
-                '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
-                    // println!("ADDING OFFSET {}", ch.to_digit(10).unwrap());
-                    offset += ch.to_digit(10).unwrap() as u64;
+                '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' => {
+                    offset += ch.to_digit(10).unwrap() as u64 - 1;
                 }
                 _ => {
                     panic!("unexpected character {}", ch);

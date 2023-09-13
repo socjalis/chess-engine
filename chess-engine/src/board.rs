@@ -3,14 +3,19 @@ use std::ops::BitXor;
 use bitvec::macros::internal::funty::Fundamental;
 use bitvec::view::BitViewSized;
 use crate::board::masks::{A_FILE, H_FILE, SECOND_RANK};
+use crate::board::move_generation::pawns::get_pawn_moves;
 use crate::board::moves::{construct_move, PromotionPiece, SpecialMove};
 use crate::board::pieces::{Piece, piece_to_str, PieceType};
+
+const WHITE: usize = 0;
+const BLACK: usize = 1;
 
 pub mod squares;
 mod pieces;
 pub mod moves;
 pub mod fen;
 pub mod masks;
+pub mod move_generation;
 
 // 0-1 - special move flag (1-promotion, 2-en passant, 3-castling)
 // 2-3 - promotion piece type (0-Knight, 1-Bishop, 2-Rook, 3-Queen)
@@ -133,106 +138,9 @@ impl BitBoard {
 
         self.black_to_move = !self.black_to_move;
     }
-    pub fn get_legal_white_pawn_moves(&self) -> Vec<Move> {
-        let white_pawns = self.pieces_bb[0][PieceType::Pawn as usize];
-        let white_pieces = white_pawns
-            & self.pieces_bb[0][PieceType::Knight as usize]
-            & self.pieces_bb[0][PieceType::Bishop as usize]
-            & self.pieces_bb[0][PieceType::Rook as usize]
-            & self.pieces_bb[0][PieceType::King as usize];
-        let black_pieces = self.pieces_bb[1][PieceType::Pawn as usize]
-            & self.pieces_bb[1][PieceType::Knight as usize]
-            & self.pieces_bb[1][PieceType::Bishop as usize]
-            & self.pieces_bb[1][PieceType::Rook as usize]
-            & self.pieces_bb[1][PieceType::King as usize];
 
-        let mut pawn_moves: Vec<Move> = Vec::new();
-
-        // TODO might be faster without Vec heap usage, use fixed array instead?
-
-        // push 1 square
-        {
-            let pushed_bitboard = white_pawns << 8;
-            let squares = pushed_bitboard & !(white_pieces | black_pieces);
-            let pawn_squares = get_ones_indices(&squares);
-
-            pawn_squares.iter().for_each(|&dest| {
-                let origin = dest - 8;
-                if dest < 56 {
-                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::None));
-                }
-                if dest >= 56 {
-                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Bishop, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Rook, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Queen, SpecialMove::Promotion));
-                }
-            });
-        }
-
-        // push 2 squares
-        {
-            let eligible_pawns = white_pawns & SECOND_RANK;
-            let pushed_bitboard = eligible_pawns << 8;
-            let pushed_2_bitboard = eligible_pawns << 16;
-            let squares = pushed_2_bitboard & !(white_pieces | black_pieces)
-                & ((pushed_bitboard & !(white_pieces | black_pieces)) << 8);
-
-            let pawn_squares = get_ones_indices(&squares);
-
-            // TODO probably can by optimized
-            pawn_squares.iter().for_each(|&dest| {
-                let origin = dest - 16;
-                if dest < 56 {
-                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::None));
-                }
-                if dest >= 56 {
-                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Bishop, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Rook, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest, origin, PromotionPiece::Queen, SpecialMove::Promotion));
-                }
-            });
-        }
-
-        // attack left
-        {
-            let eligible_pawns = white_pawns & !A_FILE;
-
-            let pawn_attack_squares = eligible_pawns << 7 & black_pieces;
-            let pawn_squares = get_ones_indices(&pawn_attack_squares);
-            pawn_squares.iter().for_each(|&dest| {
-                if dest < 56 {
-                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Knight, SpecialMove::None));
-                }
-                if dest >= 56 {
-                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Knight, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Bishop, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Rook, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Queen, SpecialMove::Promotion));
-                }
-            });
-        }
-
-        // attack right
-        {
-            let eligible_pawns = self.pieces_bb[0][PieceType::Pawn as usize] & !H_FILE;
-            let pawn_attack_squares = eligible_pawns << 7 & black_pieces;
-            let pawn_squares = get_ones_indices(&pawn_attack_squares);
-            pawn_squares.iter().for_each(|&dest| {
-                if dest < 56 {
-                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Knight, SpecialMove::None));
-                }
-                if dest >= 56 {
-                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Knight, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Bishop, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Rook, SpecialMove::Promotion));
-                    pawn_moves.push(construct_move(dest as u8, (dest - 7) as u8, PromotionPiece::Queen, SpecialMove::Promotion));
-                }
-            });
-        }
-
-        return pawn_moves;
+    pub fn get_legal_moves(&self) -> Vec<Move> {
+        return get_pawn_moves(self);
     }
 }
 
