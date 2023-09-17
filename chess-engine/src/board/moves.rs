@@ -1,6 +1,6 @@
 use bitvec::array::BitArray;
 use bitvec::macros::internal::funty::Fundamental;
-use bitvec::order::{Msb0};
+use bitvec::order::Msb0;
 use bitvec::store::BitStore;
 use bitvec::vec::BitVec;
 use bitvec::view::BitViewSized;

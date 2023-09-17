@@ -1,9 +1,8 @@
 use std::mem::transmute;
-use std::ops::BitXor;
 use bitvec::macros::internal::funty::Fundamental;
-use bitvec::view::BitViewSized;
 use crate::board::masks::{A_FILE, H_FILE, SECOND_RANK};
 use crate::board::move_generation::pawns::get_pawn_moves;
+use crate::board::move_generation::knights::get_knight_moves;
 use crate::board::moves::{construct_move, PromotionPiece, SpecialMove};
 use crate::board::pieces::{Piece, piece_to_str, PieceType};
 
@@ -72,7 +71,7 @@ impl BitBoard {
 
         for file in 0..8 {
             for rank in 0..8 {
-                board_string.push_str(piece_to_str((unsafe{transmute(self.pieces[(7 - file) * 8 + rank])} )));
+                board_string.push_str(piece_to_str(unsafe{transmute(self.pieces[(7 - file) * 8 + rank])}));
                 board_string.push_str(" ");
             }
             board_string.push_str("\n");
@@ -134,13 +133,24 @@ impl BitBoard {
             }
         }
 
-        // TODO en passant
+        if special_move_flag == SpecialMove::EnPassant {
+            // if white moved
+            if origin < dest {
+                self.pieces_bb[opponent][PieceType::Pawn as usize] ^= dest_mask >> 8;
+                self.pieces[dest - 8] = Piece::Empty as u8;
+            } else {
+                self.pieces_bb[opponent][PieceType::Pawn as usize] ^= dest_mask << 8;
+                self.pieces[dest + 8] = Piece::Empty as u8;
+            }
+        }
 
         self.black_to_move = !self.black_to_move;
     }
 
     pub fn get_legal_moves(&self) -> Vec<Move> {
-        return get_pawn_moves(self);
+        let mut moves = get_pawn_moves(self);
+        moves.append(&mut get_knight_moves(self));
+        return moves;
     }
 }
 
