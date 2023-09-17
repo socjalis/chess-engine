@@ -1,4 +1,4 @@
-use crate::board::{BitBoard, BLACK, get_ones_indices, Move, WHITE};
+use crate::board::{BitBoard, get_ones_indices, Move};
 use crate::board::moves::{construct_move, PromotionPiece, SpecialMove};
 use crate::board::move_generation::attacks::knight::KNIGHT_ATTACKS;
 use crate::board::pieces::PieceType;
