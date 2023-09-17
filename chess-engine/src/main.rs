@@ -1,7 +1,6 @@
 use bitvec::view::BitViewSized;
 use crate::board::fen::create_bitboard_from_fen;
 use crate::board::moves::format_move;
-extern crate lazy_static;
 mod board;
 
 fn main() {
