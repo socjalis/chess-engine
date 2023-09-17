@@ -1,8 +1,11 @@
 use std::mem::transmute;
+use std::ops::BitXor;
+use bitvec::array::BitArray;
 use bitvec::macros::internal::funty::Fundamental;
-use crate::board::masks::{A_FILE, H_FILE, SECOND_RANK};
+use bitvec::order::{Lsb0, Msb0};
+use bitvec::view::BitViewSized;
+use crate::board::masks::{A_FILE, EIGHTH_RANK, FIRST_RANK, H_FILE, JESUS, SECOND_RANK};
 use crate::board::move_generation::pawns::get_pawn_moves;
-use crate::board::move_generation::knights::get_knight_moves;
 use crate::board::moves::{construct_move, PromotionPiece, SpecialMove};
 use crate::board::pieces::{Piece, piece_to_str, PieceType};
 
@@ -66,12 +69,26 @@ impl Board for BitBoard {
 // 10-15 - destination
 impl BitBoard {
     // TODO optimize
+    pub fn relevant_occupancy(&self, square: u64) -> u64 {
+        return (self.pieces_bb[WHITE][PieceType:: Pawn as usize] |
+            self.pieces_bb[WHITE][PieceType::Knight as usize] |
+            self.pieces_bb[WHITE][PieceType::Bishop as usize] |
+            self.pieces_bb[WHITE][PieceType::Rook as usize] |
+            self.pieces_bb[WHITE][PieceType::Queen as usize] |
+            self.pieces_bb[WHITE][PieceType::King as usize] |
+            self.pieces_bb[BLACK][PieceType::Pawn as usize] |
+            self.pieces_bb[BLACK][PieceType::Knight as usize] |
+            self.pieces_bb[BLACK][PieceType::Bishop as usize] |
+            self.pieces_bb[BLACK][PieceType::Rook as usize] |
+            self.pieces_bb[BLACK][PieceType::Queen as usize] |
+            self.pieces_bb[BLACK][PieceType::King as usize]) & JESUS[square as usize] & !A_FILE & (!FIRST_RANK) & !EIGHTH_RANK &!H_FILE & !(1<<square);
+    }
     pub fn print(&self) {
-        let mut board_string  = String::new();
+        let mut board_string = String::new();
 
         for file in 0..8 {
             for rank in 0..8 {
-                board_string.push_str(piece_to_str(unsafe{transmute(self.pieces[(7 - file) * 8 + rank])}));
+                board_string.push_str(piece_to_str((unsafe { transmute(self.pieces[(7 - file) * 8 + rank]) })));
                 board_string.push_str(" ");
             }
             board_string.push_str("\n");
@@ -83,7 +100,7 @@ impl BitBoard {
         let dest: usize = (mov >> 10) as usize;
         let origin: usize = ((mov & 0b1111110000) >> 4) as usize;
         let promotion_piece_type: u8 = (mov & 0b1100 + 10) as u8;
-        let special_move_flag: SpecialMove = unsafe {transmute((mov & 0b000011) as u8) };
+        let special_move_flag: SpecialMove = unsafe { transmute((mov & 0b000011) as u8) };
 
         let dest_mask = 1_u64 << dest;
         let dest_anti_mask = !(dest_mask);
@@ -123,34 +140,22 @@ impl BitBoard {
             if origin > dest {
                 self.pieces_bb[current][PieceType::Rook as usize] ^= (dest_mask >> 2) + (dest_mask << 1);
                 self.pieces[dest - 2] = Piece::Empty as u8;
-                self.pieces[dest + 1] = Piece:: WhiteRook as u8 + self.black_to_move as u8;
-            }
-            else {
+                self.pieces[dest + 1] = Piece::WhiteRook as u8 + self.black_to_move as u8;
+            } else {
                 self.pieces_bb[current][PieceType::Rook as usize] ^= (dest_mask << 1) + (dest_mask >> 1);
 
                 self.pieces[dest + 1] = Piece::Empty as u8;
-                self.pieces[dest - 1] = Piece:: WhiteRook as u8 + self.black_to_move as u8;
+                self.pieces[dest - 1] = Piece::WhiteRook as u8 + self.black_to_move as u8;
             }
         }
 
-        if special_move_flag == SpecialMove::EnPassant {
-            // if white moved
-            if origin < dest {
-                self.pieces_bb[opponent][PieceType::Pawn as usize] ^= dest_mask >> 8;
-                self.pieces[dest - 8] = Piece::Empty as u8;
-            } else {
-                self.pieces_bb[opponent][PieceType::Pawn as usize] ^= dest_mask << 8;
-                self.pieces[dest + 8] = Piece::Empty as u8;
-            }
-        }
+        // TODO en passant
 
         self.black_to_move = !self.black_to_move;
     }
 
     pub fn get_legal_moves(&self) -> Vec<Move> {
-        let mut moves = get_pawn_moves(self);
-        moves.append(&mut get_knight_moves(self));
-        return moves;
+        return get_pawn_moves(self);
     }
 }
 
@@ -168,4 +173,23 @@ pub fn get_ones_indices(bitboard: &u64) -> Vec<u8> {
     }
 
     return vec;
+}
+
+pub fn print_bb(bitboard: u64) {
+    let bits: BitArray<u64, Lsb0> = bitboard.into_bitarray();
+    let mut count = 0;
+    let mut strings: [String; 8] = [(); 8].map(|_| String::new());
+
+    bits.iter().enumerate().for_each(|(idx, bit)| {
+        count += 1;
+        strings[idx/8].push_str(if bit == true {"1"} else {"0"});
+    });
+
+    strings.reverse();
+
+    strings.iter().enumerate().for_each(|(idx, string)| {
+        println!("{}", string);
+    });
+
+    println!();
 }
