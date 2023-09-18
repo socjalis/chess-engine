@@ -69,8 +69,8 @@ impl Board for BitBoard {
 // 10-15 - destination
 impl BitBoard {
     // TODO optimize
-    pub fn relevant_occupancy(&self, square: u64) -> u64 {
-        return (self.pieces_bb[WHITE][PieceType:: Pawn as usize] |
+    pub fn occupancy(&self) -> u64 {
+        return self.pieces_bb[WHITE][PieceType:: Pawn as usize] |
             self.pieces_bb[WHITE][PieceType::Knight as usize] |
             self.pieces_bb[WHITE][PieceType::Bishop as usize] |
             self.pieces_bb[WHITE][PieceType::Rook as usize] |
@@ -81,7 +81,7 @@ impl BitBoard {
             self.pieces_bb[BLACK][PieceType::Bishop as usize] |
             self.pieces_bb[BLACK][PieceType::Rook as usize] |
             self.pieces_bb[BLACK][PieceType::Queen as usize] |
-            self.pieces_bb[BLACK][PieceType::King as usize]) & JESUS[square as usize] & !A_FILE & (!FIRST_RANK) & !EIGHTH_RANK &!H_FILE & !(1<<square);
+            self.pieces_bb[BLACK][PieceType::King as usize];
     }
     pub fn print(&self) {
         let mut board_string = String::new();

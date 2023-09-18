@@ -25,7 +25,6 @@ pub fn get_knight_moves(board: &BitBoard) -> Vec<Move> {
 
     });
     
-
     return moves;
 }
 

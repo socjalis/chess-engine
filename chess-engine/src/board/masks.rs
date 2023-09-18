@@ -1,3 +1,5 @@
+use std::f32::consts::E;
+
 pub const FIRST_RANK: u64 = 255;
 pub const SECOND_RANK: u64 = 255 << 8;
 pub const THIRD_RANK: u64 = 255 << 16;
@@ -26,3 +28,66 @@ pub const JESUS: [u64; 64] = [
     A_FILE | SEVENTH_RANK, B_FILE | SEVENTH_RANK, C_FILE | SEVENTH_RANK, D_FILE | SEVENTH_RANK, E_FILE | SEVENTH_RANK, F_FILE | SEVENTH_RANK, G_FILE | SEVENTH_RANK, H_FILE | SEVENTH_RANK,
     A_FILE | EIGHTH_RANK, B_FILE | EIGHTH_RANK, C_FILE | EIGHTH_RANK, D_FILE | EIGHTH_RANK, E_FILE | EIGHTH_RANK, F_FILE | EIGHTH_RANK, G_FILE | EIGHTH_RANK, H_FILE | EIGHTH_RANK,
 ];
+
+
+pub const A1H8: u64 = 1 | 1 << (8 + 1) | 1 << (2 * 8 + 2) | 1 << (3 * 8 + 3) | 1 << (4 * 8 + 4) | 1 << (5 * 8 + 5) | 1 << (6 * 8 + 6) | 1 << (7 * 8 + 7);
+
+pub const H1A8: u64 =
+    (1 << 7) |
+        (1 << 7) << (8 - 1) |
+        (1 << 7) << (2 * 8 - 2) |
+        (1 << 7) << (3 * 8 - 3) |
+        (1 << 7) << (4 * 8 - 4) |
+        (1 << 7) << (5 * 8 - 5) |
+        (1 << 7) << (6 * 8 - 6) |
+        (1 << 7) << (7 * 8 - 7);
+
+pub const NE: [u64; 15] = [
+    (A1H8 & !A_FILE & !B_FILE & !C_FILE & !D_FILE & !E_FILE & !F_FILE & !G_FILE) >> 7,
+    (A1H8 & !A_FILE & !B_FILE & !C_FILE & !D_FILE & !E_FILE & !F_FILE) >> 6,
+    (A1H8 & !A_FILE & !B_FILE & !C_FILE & !D_FILE & !E_FILE) >> 5,
+    (A1H8 & !A_FILE & !B_FILE & !C_FILE & !D_FILE) >> 4,
+    (A1H8 & !A_FILE & !B_FILE & !C_FILE) >> 3,
+    (A1H8 & !A_FILE & !B_FILE) >> 2,
+    A1H8 >> 1,
+    A1H8,
+    (A1H8 & !H_FILE) << 1,
+    (A1H8 & !H_FILE & !G_FILE) << 2,
+    (A1H8 & !H_FILE & !G_FILE & !F_FILE) << 3,
+    (A1H8 & !H_FILE & !G_FILE & !F_FILE & !E_FILE) << 4,
+    (A1H8 & !H_FILE & !G_FILE & !F_FILE & !E_FILE & !D_FILE) << 5,
+    (A1H8 & !H_FILE & !G_FILE & !F_FILE & !E_FILE & !D_FILE & !C_FILE) << 6,
+    (A1H8 & !H_FILE & !G_FILE & !F_FILE & !E_FILE & !D_FILE & !C_FILE & !B_FILE) << 7,
+];
+
+pub const NW: [u64; 15] = [
+    (H1A8 & !A_FILE & !B_FILE & !C_FILE & !D_FILE & !E_FILE & !F_FILE & !G_FILE) >> 7,
+    (H1A8 & !A_FILE & !B_FILE & !C_FILE & !D_FILE & !E_FILE & !F_FILE) >> 6,
+    (H1A8 & !A_FILE & !B_FILE & !C_FILE & !D_FILE & !E_FILE) >> 5,
+    (H1A8 & !A_FILE & !B_FILE & !C_FILE & !D_FILE) >> 4,
+    (H1A8 & !A_FILE & !B_FILE & !C_FILE) >> 3,
+    (H1A8 & !A_FILE & !B_FILE) >> 2,
+    H1A8 >> 1,
+    H1A8,
+    (H1A8 & !H_FILE) << 1,
+    (H1A8 & !H_FILE & !G_FILE) << 2,
+    (H1A8 & !H_FILE & !G_FILE & !F_FILE) << 3,
+    (H1A8 & !H_FILE & !G_FILE & !F_FILE & !E_FILE) << 4,
+    (H1A8 & !H_FILE & !G_FILE & !F_FILE & !E_FILE & !D_FILE) << 5,
+    (H1A8 & !H_FILE & !G_FILE & !F_FILE & !E_FILE & !D_FILE & !C_FILE) << 6,
+    (H1A8 & !H_FILE & !G_FILE & !F_FILE & !E_FILE & !D_FILE & !C_FILE & !B_FILE) << 7,
+];
+
+// x
+pub const JESUS45: [u64; 64] = [
+    NE[7] | NW[0], NE[8] | NW[1], NE[9] | NW[2], NE[10] | NW[3], NE[11] | NW[4], NE[12] | NW[5], NE[13] | NW[6], NE[14] | NW[7],
+    NE[6] | NW[1], NE[7] | NW[2], NE[8] | NW[3], NE[9] | NW[4], NE[10] | NW[5], NE[11] | NW[6], NE[12] | NW[7], NE[13] | NW[8],
+    NE[5] | NW[2], NE[6] | NW[3], NE[7] | NW[4], NE[8] | NW[5], NE[9] | NW[6], NE[10] | NW[7], NE[11] | NW[8], NE[12] | NW[9],
+    NE[4] | NW[3], NE[5] | NW[4], NE[6] | NW[5], NE[7] | NW[6], NE[8] | NW[7], NE[9] | NW[8], NE[10] | NW[9], NE[11] | NW[10],
+    NE[3] | NW[4], NE[4] | NW[5], NE[5] | NW[6], NE[6] | NW[7], NE[7] | NW[8], NE[8] | NW[9], NE[9] | NW[10], NE[10] | NW[11],
+    NE[2] | NW[5], NE[3] | NW[6], NE[4] | NW[7], NE[5] | NW[8], NE[6] | NW[9], NE[7] | NW[10], NE[8] | NW[11], NE[9] | NW[12],
+    NE[1] | NW[6], NE[2] | NW[7], NE[3] | NW[8], NE[4] | NW[9], NE[5] | NW[10], NE[6] | NW[11], NE[7] | NW[12], NE[8] | NW[13],
+    NE[0] | NW[7], NE[1] | NW[8], NE[2] | NW[9], NE[3] | NW[10], NE[4] | NW[11], NE[5] | NW[12], NE[6] | NW[13], NE[7] | NW[14],
+];
+
+
