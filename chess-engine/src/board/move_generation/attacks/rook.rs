@@ -1,7 +1,6 @@
-use std::arch::x86_64::_addcarry_u64;
 #[macro_use]
 use bitvec::array::BitArray;
-use bitvec::order::{Lsb0, Msb0};
+use bitvec::order::{Lsb0};
 use bitvec::view::BitViewSized;
 use crate::board::masks::{A_FILE, EIGHTH_RANK, FIRST_RANK, H_FILE, JESUS, JESUS45};
 use crate::board::move_generation::attacks::rook::rook_magics::{BISHOP_MAGICS, ROOK_MAGICS};
@@ -11,6 +10,7 @@ pub mod rook_magics;
 
 #[derive(Clone)]
 #[derive(Copy)]
+#[derive(Debug)]
 pub struct SquareSlideAttackInfo {
     pub magic: u64,
     pub mask: u64,
@@ -22,7 +22,7 @@ fn get_rank(square: u64) -> u64 {
     return square / 8;
 }
 
-fn get_tile(square: u64) -> u64 {
+fn get_file(square: u64) -> u64 {
     return square % 8;
 }
 
@@ -36,13 +36,37 @@ pub fn get_rook_idx(square: u64, occupancy: u64) -> usize {
 pub fn get_bishop_idx(square: u64, occupancy: u64) -> usize {
     unsafe {
         let info = BISHOP_SQUARE_INFO[square as usize];
+
+        println!("info bishop {}, {:?}", square, info);
+
         return (info.magic.wrapping_mul(occupancy & info.mask) >> info.shift) as usize;
     };
 }
 
 
 pub fn get_rook_attacks(square: u64, occupancy: u64) -> u64 {
-    unsafe { return ROOK_ATTACKS[ROOK_SQUARE_INFO[square as usize].offset as usize + get_rook_idx(square, occupancy)]; };
+    let edges = FIRST_RANK * (get_rank(square) != 0) as u64
+        | EIGHTH_RANK * (get_rank(square) != 7) as u64
+        | A_FILE * (get_file(square) != 0) as u64
+        | H_FILE * (get_file(square) != 7) as u64;
+
+    let occupied_relevant = JESUS[square as usize] & occupancy & !edges & !(1 << square);
+
+    unsafe { return ROOK_ATTACKS[ROOK_SQUARE_INFO[square as usize].offset as usize + get_rook_idx(square, occupied_relevant)]; };
+}
+
+pub fn get_bishop_attacks(square: u64, occupancy: u64) -> u64 {
+    let edges = FIRST_RANK | EIGHTH_RANK | A_FILE | H_FILE;
+
+    let occupied_relevant = JESUS45[square as usize] & occupancy & !edges & !(1 << square);
+
+    println!("bishop hash: {}", get_bishop_idx(square, occupied_relevant));
+    print_bb(occupied_relevant);
+
+    let info = unsafe { BISHOP_SQUARE_INFO[square as usize] };
+
+
+    return unsafe { return BISHOP_ATTACKS[info.offset as usize + get_bishop_idx(square, occupied_relevant)]; };
 }
 
 pub static mut ROOK_ATTACKS: [u64; 102400] = [0u64; 102400];
@@ -58,7 +82,7 @@ pub fn initiate_slider_attacks() {
     rook_deltas.push((0, 0, 1, 0));
     rook_deltas.push((0, 0, 0, 1));
 
-    unsafe { initiate_slide_attacks(&rook_deltas, &ROOK_MAGICS, &mut ROOK_ATTACKS, &mut ROOK_SQUARE_INFO, &JESUS); }
+    unsafe { initiate_slide_attacks(&rook_deltas, &ROOK_MAGICS, get_rook_idx, &mut ROOK_ATTACKS, &mut ROOK_SQUARE_INFO, &JESUS); }
 
 
     // bishops
@@ -68,31 +92,28 @@ pub fn initiate_slider_attacks() {
     bishop_deltas.push((0, 0, 1, 1));
     bishop_deltas.push((0, 1, 1, 0));
 
-    unsafe { initiate_slide_attacks(&bishop_deltas, &BISHOP_MAGICS, &mut BISHOP_ATTACKS, &mut BISHOP_SQUARE_INFO, &JESUS45); }
+    unsafe { initiate_slide_attacks(&bishop_deltas, &BISHOP_MAGICS, get_bishop_idx, &mut BISHOP_ATTACKS, &mut BISHOP_SQUARE_INFO, &JESUS45); }
 }
 
-pub fn get_bishop_attacks(square: u64, occupancy: u64) -> u64 {
-    let edges = FIRST_RANK | EIGHTH_RANK | A_FILE | H_FILE;
 
-    let occupied_relevant = JESUS45[square as usize] & occupancy & !edges & !(1 << square);
-
-    println!("bishop hash: {}", get_bishop_idx(square, occupied_relevant));
-    let info = unsafe { BISHOP_SQUARE_INFO[square as usize] };
-
-
-    return unsafe { return BISHOP_ATTACKS[info.offset as usize + get_bishop_idx(square, occupied_relevant)]; };
-}
 
 // let mut slide_attacks_info = [(); 64].map(|_| SquareSlideAttackInfo { shift: 0, magic: 0, mask: 0, offset: 0 });
 fn initiate_slide_attacks(
     deltas: &Vec<(u64, u64, u64, u64)>,
     magics: &[u64; 64],
+    get_idx: fn(square: u64, occupancy: u64) -> usize,
     slide_attacks: &mut [u64],
     slide_attacks_info: &mut [SquareSlideAttackInfo; 64],
     masks: &[u64; 64],
 ) {
     for square in 0u64..64 {
-        let edges = FIRST_RANK | EIGHTH_RANK | A_FILE | H_FILE;
+        let edges = FIRST_RANK * (get_rank(square) != 0) as u64
+            | EIGHTH_RANK * (get_rank(square) != 7) as u64
+            | A_FILE * (get_file(square) != 0) as u64
+            | H_FILE * (get_file(square) != 7) as u64;
+
+        println!("{}", square);
+        print_bb(edges);
 
 
         slide_attacks_info[square as usize].magic = magics[square as usize];
@@ -133,7 +154,7 @@ fn initiate_slide_attacks(
             // println!("occupancy bits: {}, vec size: {}, square: {}", slice.len(), vec.len(), square);
 
             let attacks = calculate_attacks(&occupancy, &square, deltas);
-            let hash = get_bishop_idx(square, occupancy);
+            let hash = get_idx(square, occupancy);
 
             // println!("square {} occ existing {} existing {} hash {}", square, occupancy_number, slide_attacks[(slide_attacks_info[square as usize].offset + hash as u64).clone() as usize], hash);
 
@@ -143,7 +164,7 @@ fn initiate_slide_attacks(
 }
 
 fn calculate_attacks(occupancy: &u64, square: &u64, moves: &Vec<(u64, u64, u64, u64)>) -> u64 {
-    let tile = get_tile(*square);
+    let tile = get_file(*square);
     let rank = get_rank(*square);
 
     let mut attacks: u64 = 0;

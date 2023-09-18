@@ -22,7 +22,6 @@ pub fn get_knight_moves(board: &BitBoard) -> Vec<Move> {
         attack_squares.iter().for_each(|&dest| {
             moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::None));
         });
-
     });
     
     return moves;

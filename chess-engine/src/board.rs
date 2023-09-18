@@ -5,9 +5,13 @@ use bitvec::macros::internal::funty::Fundamental;
 use bitvec::order::{Lsb0, Msb0};
 use bitvec::view::BitViewSized;
 use crate::board::masks::{A_FILE, EIGHTH_RANK, FIRST_RANK, H_FILE, JESUS, SECOND_RANK};
+use crate::board::move_generation::attacks::knight::KNIGHT_ATTACKS;
+use crate::board::move_generation::attacks::rook::{get_bishop_attacks, get_rook_attacks};
+use crate::board::move_generation::knights::get_knight_moves;
 use crate::board::move_generation::pawns::get_pawn_moves;
-use crate::board::moves::{construct_move, PromotionPiece, SpecialMove};
+use crate::board::moves::{construct_move, get_moves_for_piece_type, get_slider_moves, PromotionPiece, SpecialMove};
 use crate::board::pieces::{Piece, piece_to_str, PieceType};
+use crate::board::pieces::PieceType::{Bishop, Knight, Queen, Rook};
 
 const WHITE: usize = 0;
 const BLACK: usize = 1;
@@ -27,13 +31,14 @@ type Move = u16;
 
 pub trait Board {
     fn initialize(fen: &str);
-    fn get_legal_moves() -> [(char, char); 1];
+    fn get_legal_moves() -> Move;
     fn get_pieces() -> [char; 1];
 }
 
 pub struct BitBoard {
     pieces: [u8; 64],
     pieces_bb: [[u64; 6]; 2],
+    pieces_color: [u64; 2],
 
     black_to_move: bool,
 
@@ -48,16 +53,14 @@ pub struct BitBoard {
     full_moves: u16,
 }
 
-impl Board for BitBoard {
+impl BitBoard {
     fn initialize(fen: &str) {
         let splitted = fen.split("/");
         for part in splitted {
             println!("{}", part);
         }
     }
-    fn get_legal_moves() -> [(char, char); 1] {
-        return [('a', 'b')];
-    }
+
     fn get_pieces() -> [char; 1] {
         return ['a'];
     }
@@ -69,8 +72,30 @@ impl Board for BitBoard {
 // 10-15 - destination
 impl BitBoard {
     // TODO optimize
+    pub fn get_legal_moves(&self) -> Vec<Move> {
+        let current_pieces = self.pieces_color[self.black_to_move as usize];
+        let occupancy = self.pieces_color[WHITE] | self.pieces_color[BLACK];
+
+        let mut pawn_moves = get_pawn_moves(self);
+        let mut knight_moves = get_moves_for_piece_type(self.pieces_bb[self.black_to_move as usize][Knight as usize], *KNIGHT_ATTACKS, current_pieces);
+        let mut rook_moves = get_slider_moves(self.pieces_bb[self.black_to_move as usize][Rook as usize], get_rook_attacks, occupancy, current_pieces);
+        let mut bishop_moves = get_slider_moves(self.pieces_bb[self.black_to_move as usize][Bishop as usize], get_bishop_attacks, occupancy, current_pieces);
+        let mut queen_moves: Vec<Move> = Vec::new();
+        queen_moves.append(&mut get_slider_moves(self.pieces_bb[self.black_to_move as usize][Queen as usize], get_rook_attacks, occupancy, current_pieces));
+        queen_moves.append(&mut get_slider_moves(self.pieces_bb[self.black_to_move as usize][Queen as usize], get_bishop_attacks, occupancy, current_pieces));
+
+        let mut moves :Vec<Move> = Vec::new();
+
+        moves.append(&mut pawn_moves);
+        moves.append(&mut knight_moves);
+        moves.append(&mut rook_moves);
+        moves.append(&mut bishop_moves);
+        moves.append(&mut queen_moves);
+
+        return moves;
+    }
     pub fn occupancy(&self) -> u64 {
-        return self.pieces_bb[WHITE][PieceType:: Pawn as usize] |
+        return self.pieces_bb[WHITE][PieceType::Pawn as usize] |
             self.pieces_bb[WHITE][PieceType::Knight as usize] |
             self.pieces_bb[WHITE][PieceType::Bishop as usize] |
             self.pieces_bb[WHITE][PieceType::Rook as usize] |
@@ -103,9 +128,7 @@ impl BitBoard {
         let special_move_flag: SpecialMove = unsafe { transmute((mov & 0b000011) as u8) };
 
         let dest_mask = 1_u64 << dest;
-        let dest_anti_mask = !(dest_mask);
         let origin_mask = 1_u64 << origin;
-        let origin_anti_mask = !(origin_mask);
 
         let current = !self.black_to_move as usize;
         let opponent = self.black_to_move as usize;
@@ -149,13 +172,32 @@ impl BitBoard {
             }
         }
 
-        // TODO en passant
+        if special_move_flag == SpecialMove::EnPassant {
+            // if white moved
+            if origin < dest {
+                self.pieces_bb[opponent][PieceType::Pawn as usize] ^= dest_mask >> 8;
+                self.pieces[dest - 8] = Piece::Empty as u8;
+            } else {
+                self.pieces_bb[opponent][PieceType::Pawn as usize] ^= dest_mask << 8;
+                self.pieces[dest + 8] = Piece::Empty as u8;
+            }
+        }
+
+        self.pieces_color[WHITE] = self.pieces_bb[WHITE][PieceType::Pawn as usize] |
+            self.pieces_bb[WHITE][PieceType::Knight as usize] |
+            self.pieces_bb[WHITE][PieceType::Bishop as usize] |
+            self.pieces_bb[WHITE][PieceType::Rook as usize] |
+            self.pieces_bb[WHITE][PieceType::Queen as usize] |
+            self.pieces_bb[WHITE][PieceType::King as usize];
+
+        self.pieces_color[BLACK] = self.pieces_bb[BLACK][PieceType::Pawn as usize] |
+            self.pieces_bb[BLACK][PieceType::Knight as usize] |
+            self.pieces_bb[BLACK][PieceType::Bishop as usize] |
+            self.pieces_bb[BLACK][PieceType::Rook as usize] |
+            self.pieces_bb[BLACK][PieceType::Queen as usize] |
+            self.pieces_bb[BLACK][PieceType::King as usize];
 
         self.black_to_move = !self.black_to_move;
-    }
-
-    pub fn get_legal_moves(&self) -> Vec<Move> {
-        return get_pawn_moves(self);
     }
 }
 
@@ -182,7 +224,7 @@ pub fn print_bb(bitboard: u64) {
 
     bits.iter().enumerate().for_each(|(idx, bit)| {
         count += 1;
-        strings[idx/8].push_str(if bit == true {"1"} else {"0"});
+        strings[idx / 8].push_str(if bit == true { "1" } else { "0" });
     });
 
     strings.reverse();

@@ -2,6 +2,7 @@ use crate::board::{BitBoard, BLACK, get_ones_indices, Move, WHITE};
 use crate::board::masks::{A_FILE, H_FILE, SECOND_RANK, SEVENTH_RANK};
 use crate::board::moves::{construct_move, PromotionPiece, SpecialMove};
 use crate::board::pieces::PieceType;
+use crate::board::pieces::PieceType::Pawn;
 
 pub fn get_pawn_moves(board: &BitBoard) -> Vec<Move> {
     return if board.black_to_move { get_black_pawn_moves(board) } else { get_white_pawn_moves(board) };
@@ -208,4 +209,14 @@ pub fn get_black_pawn_moves(board: &BitBoard) -> Vec<Move> {
     }
 
     return pawn_moves;
+}
+
+fn get_pawn_attacks(board: &BitBoard) -> u64 {
+    let eligible_pawns = board.pieces_bb[board.black_to_move as usize][Pawn as usize] & !H_FILE;
+    let pawn_attack_squares_left = eligible_pawns >> 9 & board.pieces_color[WHITE];
+
+    let eligible_pawns = board.pieces_bb[board.black_to_move as usize][Pawn as usize] & !H_FILE;
+    let pawn_attack_squares_right = eligible_pawns >> 7 & board.pieces_color[WHITE];
+
+    return pawn_attack_squares_left >> pawn_attack_squares_right;
 }

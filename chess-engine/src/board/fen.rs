@@ -20,8 +20,6 @@ pub fn create_bitboard_from_fen(fen: &str) -> BitBoard {
         black_king
     ) = get_pieces_from_fen(fen_pieces);
 
-    println!("xdd {:b}", white_pawns);
-
     let (
         white_o_o,
         white_o_o_o,
@@ -83,22 +81,37 @@ pub fn create_bitboard_from_fen(fen: &str) -> BitBoard {
     println!("dupa {:?}", pieces[16]);
 
     return BitBoard {
-        pieces_bb: [[
-            white_pawns,
-            white_knights,
-            white_bishops,
-            white_rooks,
-            white_queens,
-            white_king,
+        pieces_bb: [
+            [
+                white_pawns,
+                white_knights,
+                white_bishops,
+                white_rooks,
+                white_queens,
+                white_king,
+            ],
+            [
+                black_pawns,
+                black_knights,
+                black_bishops,
+                black_rooks,
+                black_queens,
+                black_king,
+            ]],
+        pieces_color: [
+            white_pawns |
+                white_knights |
+                white_bishops |
+                white_rooks |
+                white_queens |
+                white_king,
+            black_pawns |
+                black_knights |
+                black_bishops |
+                black_rooks |
+                black_queens |
+                black_king
         ],
-        [
-            black_pawns,
-            black_knights,
-            black_bishops,
-            black_rooks,
-            black_queens,
-            black_king,
-        ]],
         pieces,
         black_to_move: fen_color == "b",
         white_o_o,
@@ -220,7 +233,7 @@ fn get_en_passant_from_fen(en_passant_fen: &str) -> u64 {
     let first_char = en_passant_fen.chars().nth(0).unwrap();
     let second_char = en_passant_fen.chars().nth(1).unwrap();
     let is_proper_letter = |c: char| -> bool { c.is_ascii() && 'a' <= c && 'h' >= c };
-    let is_proper_number = |c: char| -> bool { c.is_ascii_digit() && c != '0' && c != '9'};
+    let is_proper_number = |c: char| -> bool { c.is_ascii_digit() && c != '0' && c != '9' };
     assert!(is_proper_letter(first_char), "Incorrect first character of en passant {}", en_passant_fen);
     assert!(is_proper_number(second_char), "Incorrect number of en passant {}", en_passant_fen);
 

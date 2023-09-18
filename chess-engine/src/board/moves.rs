@@ -1,10 +1,13 @@
+use std::num::FpCategory::Normal;
 use bitvec::array::BitArray;
 use bitvec::macros::internal::funty::Fundamental;
 use bitvec::order::Msb0;
 use bitvec::store::BitStore;
 use bitvec::vec::BitVec;
 use bitvec::view::BitViewSized;
-use crate::board::Move;
+use crate::board::{Move, print_bb};
+use crate::board::moves::PromotionPiece::Knight;
+use crate::board::pieces::PieceType;
 use crate::board::squares::SQUARES;
 
 #[derive(PartialEq)]
@@ -34,6 +37,53 @@ pub fn construct_move(dest: u8, origin: u8, promotion_piece: PromotionPiece, spe
        + special_move_flag as u16;
 
     return x;
+}
+
+
+pub fn pop_lsb_idx(number: &mut u64) -> u64 {
+    let idx = number.trailing_zeros() as u64;
+    *number ^= 1 << idx;
+
+    return idx;
+}
+
+pub fn generate_moves(square: u64, attacks: u64, current_pieces: u64) -> Vec<Move> {
+    let mut piece_attacks = attacks & !current_pieces;
+    let mut moves: Vec<Move> = Vec::new();
+
+    while piece_attacks != 0 {
+        let dest_idx = pop_lsb_idx(&mut piece_attacks) as u8;
+        moves.push(construct_move(dest_idx, square as u8, Knight, SpecialMove::None));
+    }
+
+    return moves;
+}
+pub fn get_moves_for_piece_type(pieces_bb: u64, attacks: [u64; 64], current_pieces: u64) -> Vec<Move> {
+    let mut pieces = pieces_bb;
+    let mut moves: Vec<Move> = Vec::new();
+
+    while pieces != 0 { let piece_idx = pop_lsb_idx(&mut pieces);
+       moves.append(&mut generate_moves(piece_idx, attacks[piece_idx as usize], current_pieces));
+    }
+
+    return moves;
+}
+
+pub fn get_slider_moves(pieces_bb: u64, get_attacks: fn(square: u64, occupancy: u64) -> u64, occupancy: u64, current_pieces: u64) -> Vec<Move> {
+    let mut pieces = pieces_bb;
+    let mut moves: Vec<Move> = Vec::new();
+
+    while pieces != 0 {
+        let piece_idx = pop_lsb_idx(&mut pieces);
+        let piece_attacks = get_attacks(piece_idx, occupancy);
+
+        println!("piece idx {}", piece_idx);
+        print_bb(piece_attacks);
+
+        moves.append(&mut generate_moves(piece_idx, piece_attacks, current_pieces));
+    }
+
+    return moves;
 }
 
 pub fn format_move(mov: &Move) -> String {
