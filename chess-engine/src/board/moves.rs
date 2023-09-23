@@ -31,12 +31,25 @@ pub enum SpecialMove {
 // 12-13 - promotion piece type (0-Knight, 1-Bishop, 2-Rook, 3-Queen)
 // 14-15 - special move flag (1-promotion, 2-en passant, 3-castling)
 pub fn construct_move(dest: u8, origin: u8, promotion_piece: PromotionPiece, special_move_flag: SpecialMove) -> u16 {
-   let x = ((dest as u16) << 10)
+    let x = ((dest as u16) << 10)
        + ((origin as u16) << 4)
        + ((promotion_piece as u16) << 2)
        + special_move_flag as u16;
 
     return x;
+}
+
+
+// for testing purposes
+pub fn move_is(mv: Move, dest: u8, origin: u8, promotion_piece: PromotionPiece, special_move_flag: SpecialMove) {
+    let dest_mask: u16 = 0b111111 << 10;
+    let origin_mask: u16 = dest_mask << 4;
+    let promotion_piece_mask: u16 = 0b11 << 2;
+    let special_move_mask: u16 = 0b11;
+    assert_eq!(mv & dest_mask, dest as u16);
+    assert_eq!(mv & origin_mask, origin as u16);
+    assert_eq!(mv & promotion_piece_mask, promotion_piece as u16);
+    assert_eq!(mv & special_move_mask, special_move_flag as u16);
 }
 
 

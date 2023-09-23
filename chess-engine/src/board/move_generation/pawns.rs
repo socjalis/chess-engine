@@ -1,6 +1,6 @@
 use crate::board::{BitBoard, BLACK, get_ones_indices, Move, WHITE};
-use crate::board::masks::{A_FILE, H_FILE, SECOND_RANK, SEVENTH_RANK};
-use crate::board::moves::{construct_move, PromotionPiece, SpecialMove};
+use crate::board::masks::{A_FILE, H_FILE, FIFTH_RANK, SECOND_RANK, SEVENTH_RANK, FOURTH_RANK};
+use crate::board::moves::{construct_move, pop_lsb_idx, PromotionPiece, SpecialMove};
 use crate::board::pieces::PieceType;
 use crate::board::pieces::PieceType::Pawn;
 
@@ -105,6 +105,20 @@ pub fn get_white_pawn_moves(board: &BitBoard) -> Vec<Move> {
         });
     }
 
+    // en passant
+    {
+        if (board.en_passant != 0) {
+            let eligible_pawns = white_pawns & FIFTH_RANK;
+            let attacks_from_ep_square = (board.en_passant & !A_FILE) >> 9 | (board.en_passant & !H_FILE) >> 7 ;
+            let squares = eligible_pawns & attacks_from_ep_square;
+            let pawn_squares = get_ones_indices(&squares);
+            let dest = board.en_passant.trailing_zeros() as u8;
+            pawn_squares.iter().for_each(|&origin| {
+                pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::EnPassant));
+            });
+        }
+    }
+
     return pawn_moves;
 }
 
@@ -169,7 +183,7 @@ pub fn get_black_pawn_moves(board: &BitBoard) -> Vec<Move> {
 
     // attack left
     {
-        let eligible_pawns = black_pawns & !H_FILE;
+        let eligible_pawns = black_pawns & !A_FILE;
 
         let pawn_attack_squares = eligible_pawns >> 9 & white_pieces;
         let pawn_squares = get_ones_indices(&pawn_attack_squares);
@@ -206,6 +220,20 @@ pub fn get_black_pawn_moves(board: &BitBoard) -> Vec<Move> {
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Queen, SpecialMove::Promotion));
             }
         });
+    }
+
+    // en passant
+    {
+        if (board.en_passant != 0) {
+            let eligible_pawns = black_pawns & FOURTH_RANK;
+            let attacks_from_ep_square = (board.en_passant & !A_FILE) << 9 | (board.en_passant & !H_FILE) << 7 ;
+            let squares = eligible_pawns & attacks_from_ep_square;
+            let dest = board.en_passant.trailing_zeros() as u8;
+            let pawn_squares = get_ones_indices(&squares);
+            pawn_squares.iter().for_each(|&origin| {
+                pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::EnPassant));
+            });
+        }
     }
 
     return pawn_moves;
