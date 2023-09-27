@@ -4,14 +4,18 @@ use bitvec::array::BitArray;
 use bitvec::macros::internal::funty::Fundamental;
 use bitvec::order::{Lsb0, Msb0};
 use bitvec::view::BitViewSized;
+use crate::board::eval::get_material_eval;
 use crate::board::masks::{A_FILE, EIGHTH_RANK, FIRST_RANK, H_FILE, JESUS, SECOND_RANK};
+use crate::board::move_generation::attacks::king::KING_ATTACKS;
 use crate::board::move_generation::attacks::knight::KNIGHT_ATTACKS;
-use crate::board::move_generation::attacks::rook::{get_bishop_attacks, get_rook_attacks};
+use crate::board::move_generation::attacks::rook::{get_bishop_attacks, get_rook_attacks, get_slider_attacks_for_bb};
+use crate::board::move_generation::king::get_castling_moves;
 use crate::board::move_generation::knights::get_knight_moves;
-use crate::board::move_generation::pawns::get_pawn_moves;
-use crate::board::moves::{construct_move, get_moves_for_piece_type, get_slider_moves, PromotionPiece, SpecialMove};
+use crate::board::move_generation::pawns::{get_pawn_attacks, get_pawn_moves};
+use crate::board::moves::{construct_move, get_attacks, get_moves_for_piece_type, get_slider_moves, PromotionPiece, SpecialMove};
 use crate::board::pieces::{Piece, piece_to_str, PieceType};
-use crate::board::pieces::PieceType::{Bishop, Knight, Queen, Rook};
+use crate::board::pieces::Piece::{Empty, WhiteRook};
+use crate::board::pieces::PieceType::{Bishop, King, Knight, Pawn, Queen, Rook};
 
 const WHITE: usize = 0;
 const BLACK: usize = 1;
@@ -22,6 +26,8 @@ pub mod moves;
 pub mod fen;
 pub mod masks;
 pub mod move_generation;
+pub mod eval;
+pub mod search;
 
 // 0-1 - special move flag (1-promotion, 2-en passant, 3-castling)
 // 2-3 - promotion piece type (0-Knight, 1-Bishop, 2-Rook, 3-Queen)
@@ -29,16 +35,13 @@ pub mod move_generation;
 // 10-15 - destination
 type Move = u16;
 
-pub trait Board {
-    fn initialize(fen: &str);
-    fn get_legal_moves() -> Move;
-    fn get_pieces() -> [char; 1];
-}
-
-pub struct BitBoard {
+pub struct Board {
     pieces: [u8; 64],
     pieces_bb: [[u64; 6]; 2],
-    pieces_color: [u64; 2],
+    pieces_color_bb: [u64; 2],
+
+    attacks_bb: [[u64; 6]; 2],
+    attacks_color_bb: [u64; 2],
 
     black_to_move: bool,
 
@@ -53,60 +56,42 @@ pub struct BitBoard {
     full_moves: u16,
 }
 
-impl BitBoard {
-    fn initialize(fen: &str) {
-        let splitted = fen.split("/");
-        for part in splitted {
-            println!("{}", part);
-        }
-    }
-
-    fn get_pieces() -> [char; 1] {
-        return ['a'];
-    }
-}
-
 // 0-1 - special move flag (1-promotion, 2-en passant, 3-castling)
 // 2-3 - promotion piece type (0-Knight, 1-Bishop, 2-Rook, 3-Queen)
 // 4-9 - origin
 // 10-15 - destination
-impl BitBoard {
+impl Board {
+    pub fn static_eval(&self) -> i32 {
+        return get_material_eval(self) / 1000;
+    }
     // TODO optimize
     pub fn get_legal_moves(&self) -> Vec<Move> {
-        let current_pieces = self.pieces_color[self.black_to_move as usize];
-        let occupancy = self.pieces_color[WHITE] | self.pieces_color[BLACK];
+        let current_pieces = self.pieces_color_bb[self.black_to_move as usize];
+        let occupancy = self.pieces_color_bb[WHITE] | self.pieces_color_bb[BLACK];
 
         let mut pawn_moves = get_pawn_moves(self);
         let mut knight_moves = get_moves_for_piece_type(self.pieces_bb[self.black_to_move as usize][Knight as usize], *KNIGHT_ATTACKS, current_pieces);
+        let mut king_moves = get_moves_for_piece_type(self.pieces_bb[self.black_to_move as usize][King as usize], *KING_ATTACKS, current_pieces);
+        king_moves.append(&mut get_castling_moves(&self));
         let mut rook_moves = get_slider_moves(self.pieces_bb[self.black_to_move as usize][Rook as usize], get_rook_attacks, occupancy, current_pieces);
         let mut bishop_moves = get_slider_moves(self.pieces_bb[self.black_to_move as usize][Bishop as usize], get_bishop_attacks, occupancy, current_pieces);
         let mut queen_moves: Vec<Move> = Vec::new();
         queen_moves.append(&mut get_slider_moves(self.pieces_bb[self.black_to_move as usize][Queen as usize], get_rook_attacks, occupancy, current_pieces));
         queen_moves.append(&mut get_slider_moves(self.pieces_bb[self.black_to_move as usize][Queen as usize], get_bishop_attacks, occupancy, current_pieces));
 
-        let mut moves :Vec<Move> = Vec::new();
+        let mut moves: Vec<Move> = Vec::new();
 
         moves.append(&mut pawn_moves);
         moves.append(&mut knight_moves);
         moves.append(&mut rook_moves);
         moves.append(&mut bishop_moves);
         moves.append(&mut queen_moves);
+        moves.append(&mut king_moves);
 
         return moves;
     }
     pub fn occupancy(&self) -> u64 {
-        return self.pieces_bb[WHITE][PieceType::Pawn as usize] |
-            self.pieces_bb[WHITE][PieceType::Knight as usize] |
-            self.pieces_bb[WHITE][PieceType::Bishop as usize] |
-            self.pieces_bb[WHITE][PieceType::Rook as usize] |
-            self.pieces_bb[WHITE][PieceType::Queen as usize] |
-            self.pieces_bb[WHITE][PieceType::King as usize] |
-            self.pieces_bb[BLACK][PieceType::Pawn as usize] |
-            self.pieces_bb[BLACK][PieceType::Knight as usize] |
-            self.pieces_bb[BLACK][PieceType::Bishop as usize] |
-            self.pieces_bb[BLACK][PieceType::Rook as usize] |
-            self.pieces_bb[BLACK][PieceType::Queen as usize] |
-            self.pieces_bb[BLACK][PieceType::King as usize];
+        return self.pieces_color_bb[WHITE] | self.pieces_color_bb[BLACK];
     }
     pub fn print(&self) {
         let mut board_string = String::new();
@@ -119,6 +104,47 @@ impl BitBoard {
             board_string.push_str("\n");
         }
         println!("{}", board_string);
+    }
+
+    pub fn initialize_attacks(&mut self){
+        // attacks
+        self.pieces_color_bb[WHITE] = self.pieces_bb[WHITE][Pawn as usize] |
+            self.pieces_bb[WHITE][Knight as usize] |
+            self.pieces_bb[WHITE][Bishop as usize] |
+            self.pieces_bb[WHITE][Rook as usize] |
+            self.pieces_bb[WHITE][Queen as usize] |
+            self.pieces_bb[WHITE][King as usize];
+
+        self.pieces_color_bb[BLACK] = self.pieces_bb[BLACK][Pawn as usize] |
+            self.pieces_bb[BLACK][Knight as usize] |
+            self.pieces_bb[BLACK][Bishop as usize] |
+            self.pieces_bb[BLACK][Rook as usize] |
+            self.pieces_bb[BLACK][Queen as usize] |
+            self.pieces_bb[BLACK][King as usize];
+
+        let occupancy = self.occupancy();
+
+        let mut setAttacks = |color: usize| {
+            self.attacks_bb[color][Pawn as usize] = get_pawn_attacks(&self, color);
+            self.attacks_bb[color][Knight as usize] = get_attacks(self.pieces_bb[color][Knight as usize], *KNIGHT_ATTACKS);
+            self.attacks_bb[color][Bishop as usize] = get_slider_attacks_for_bb(self.pieces_bb[color][Bishop as usize], get_bishop_attacks, occupancy);
+            self.attacks_bb[color][Rook as usize] = get_slider_attacks_for_bb(self.pieces_bb[color][Rook as usize], get_rook_attacks, occupancy);
+            self.attacks_bb[color][Queen as usize] = get_slider_attacks_for_bb(self.pieces_bb[color][Bishop as usize], get_bishop_attacks, occupancy);
+            self.attacks_bb[color][Queen as usize] |= get_slider_attacks_for_bb(self.pieces_bb[color][Rook as usize], get_rook_attacks, occupancy);
+            self.attacks_bb[color][King as usize] = get_attacks(self.pieces_bb[color][King as usize], *KING_ATTACKS);
+
+            self.attacks_color_bb[color] =
+                self.attacks_bb[color][Pawn as usize] |
+                    self.attacks_bb[color][Knight as usize] |
+                    self.attacks_bb[color][Bishop as usize] |
+                    self.attacks_bb[color][Rook as usize] |
+                    self.attacks_bb[color][Queen as usize] |
+                    self.attacks_bb[color][Queen as usize] |
+                    self.attacks_bb[color][King as usize];
+        };
+
+        setAttacks(WHITE);
+        setAttacks(BLACK);
     }
 
     pub fn make_move(&mut self, mov: Move) {
@@ -157,21 +183,22 @@ impl BitBoard {
 
         // castling
         if special_move_flag == SpecialMove::Castle {
-            self.pieces_bb[current][PieceType::King as usize] ^= dest_mask;
+            self.pieces_bb[current][King as usize] ^= dest_mask;
             self.pieces[dest] = (special_move_flag == SpecialMove::None) as u8 * origin_piece;
 
             if origin > dest {
-                self.pieces_bb[current][PieceType::Rook as usize] ^= (dest_mask >> 2) + (dest_mask << 1);
-                self.pieces[dest - 2] = Piece::Empty as u8;
-                self.pieces[dest + 1] = Piece::WhiteRook as u8 + self.black_to_move as u8;
+                self.pieces_bb[current][Rook as usize] ^= (dest_mask >> 2) + (dest_mask << 1);
+                self.pieces[dest - 2] = Empty as u8;
+                self.pieces[dest + 1] = WhiteRook as u8 + self.black_to_move as u8;
             } else {
-                self.pieces_bb[current][PieceType::Rook as usize] ^= (dest_mask << 1) + (dest_mask >> 1);
+                self.pieces_bb[current][Rook as usize] ^= (dest_mask << 1) + (dest_mask >> 1);
 
-                self.pieces[dest + 1] = Piece::Empty as u8;
-                self.pieces[dest - 1] = Piece::WhiteRook as u8 + self.black_to_move as u8;
+                self.pieces[dest + 1] = Empty as u8;
+                self.pieces[dest - 1] = WhiteRook as u8 + self.black_to_move as u8;
             }
         }
 
+        // en passant
         if special_move_flag == SpecialMove::EnPassant {
             // if white moved
             if origin < dest {
@@ -183,19 +210,44 @@ impl BitBoard {
             }
         }
 
-        self.pieces_color[WHITE] = self.pieces_bb[WHITE][PieceType::Pawn as usize] |
-            self.pieces_bb[WHITE][PieceType::Knight as usize] |
-            self.pieces_bb[WHITE][PieceType::Bishop as usize] |
-            self.pieces_bb[WHITE][PieceType::Rook as usize] |
-            self.pieces_bb[WHITE][PieceType::Queen as usize] |
-            self.pieces_bb[WHITE][PieceType::King as usize];
+        // attacks
+        self.pieces_color_bb[WHITE] = self.pieces_bb[WHITE][Pawn as usize] |
+            self.pieces_bb[WHITE][Knight as usize] |
+            self.pieces_bb[WHITE][Bishop as usize] |
+            self.pieces_bb[WHITE][Rook as usize] |
+            self.pieces_bb[WHITE][Queen as usize] |
+            self.pieces_bb[WHITE][King as usize];
 
-        self.pieces_color[BLACK] = self.pieces_bb[BLACK][PieceType::Pawn as usize] |
-            self.pieces_bb[BLACK][PieceType::Knight as usize] |
-            self.pieces_bb[BLACK][PieceType::Bishop as usize] |
-            self.pieces_bb[BLACK][PieceType::Rook as usize] |
-            self.pieces_bb[BLACK][PieceType::Queen as usize] |
-            self.pieces_bb[BLACK][PieceType::King as usize];
+        self.pieces_color_bb[BLACK] = self.pieces_bb[BLACK][Pawn as usize] |
+            self.pieces_bb[BLACK][Knight as usize] |
+            self.pieces_bb[BLACK][Bishop as usize] |
+            self.pieces_bb[BLACK][Rook as usize] |
+            self.pieces_bb[BLACK][Queen as usize] |
+            self.pieces_bb[BLACK][King as usize];
+
+        let occupancy = self.occupancy();
+
+        let mut setAttacks = |color: usize| {
+            self.attacks_bb[color][Pawn as usize] = get_pawn_attacks(&self, color);
+            self.attacks_bb[color][Knight as usize] = get_attacks(self.pieces_bb[color][Knight as usize], *KNIGHT_ATTACKS);
+            self.attacks_bb[color][Bishop as usize] = get_slider_attacks_for_bb(self.pieces_bb[color][Bishop as usize], get_bishop_attacks, occupancy);
+            self.attacks_bb[color][Rook as usize] = get_slider_attacks_for_bb(self.pieces_bb[color][Rook as usize], get_rook_attacks, occupancy);
+            self.attacks_bb[color][Queen as usize] = get_slider_attacks_for_bb(self.pieces_bb[color][Bishop as usize], get_bishop_attacks, occupancy);
+            self.attacks_bb[color][Queen as usize] |= get_slider_attacks_for_bb(self.pieces_bb[color][Rook as usize], get_rook_attacks, occupancy);
+            self.attacks_bb[color][King as usize] = get_attacks(self.pieces_bb[color][King as usize], *KING_ATTACKS);
+
+            self.attacks_color_bb[color] =
+                self.attacks_bb[color][Pawn as usize] |
+                    self.attacks_bb[color][Knight as usize] |
+                    self.attacks_bb[color][Bishop as usize] |
+                    self.attacks_bb[color][Rook as usize] |
+                    self.attacks_bb[color][Queen as usize] |
+                    self.attacks_bb[color][Queen as usize] |
+                    self.attacks_bb[color][King as usize];
+        };
+
+        setAttacks(WHITE);
+        setAttacks(BLACK);
 
         self.black_to_move = !self.black_to_move;
     }

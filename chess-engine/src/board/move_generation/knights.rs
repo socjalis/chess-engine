@@ -1,9 +1,9 @@
-use crate::board::{BitBoard, get_ones_indices, Move};
+use crate::board::{Board, get_ones_indices, Move};
 use crate::board::moves::{construct_move, PromotionPiece, SpecialMove};
 use crate::board::move_generation::attacks::knight::KNIGHT_ATTACKS;
 use crate::board::pieces::PieceType;
 
-pub fn get_knight_moves(board: &BitBoard) -> Vec<Move> {
+pub fn get_knight_moves(board: &Board) -> Vec<Move> {
     let mut moves: Vec<Move> = Vec::new();
     let color = board.black_to_move as usize;
     let current_knights = board.pieces_bb[color][PieceType::Knight as usize];

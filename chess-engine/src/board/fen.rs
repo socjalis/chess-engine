@@ -1,7 +1,7 @@
-use crate::board::{BitBoard, get_ones_indices};
+use crate::board::{Board, get_ones_indices};
 use crate::board::pieces::Piece;
 
-pub fn create_bitboard_from_fen(fen: &str) -> BitBoard {
+pub fn create_bitboard_from_fen(fen: &str) -> Board {
     let [fen_pieces, fen_color, fen_castles, fen_en_passant, fen_half_moves, fen_full_moves]: [&str; 6] =
         fen.split(" ").collect::<Vec<&str>>().try_into().unwrap();
 
@@ -77,10 +77,11 @@ pub fn create_bitboard_from_fen(fen: &str) -> BitBoard {
         pieces[*idx as usize] = Piece::BlackKing as u8;
     });
 
-
     println!("dupa {:?}", pieces[16]);
 
-    return BitBoard {
+
+
+    let mut board = Board {
         pieces_bb: [
             [
                 white_pawns,
@@ -98,7 +99,7 @@ pub fn create_bitboard_from_fen(fen: &str) -> BitBoard {
                 black_queens,
                 black_king,
             ]],
-        pieces_color: [
+        pieces_color_bb: [
             white_pawns |
                 white_knights |
                 white_bishops |
@@ -112,6 +113,8 @@ pub fn create_bitboard_from_fen(fen: &str) -> BitBoard {
                 black_queens |
                 black_king
         ],
+        attacks_bb: [[0;6];2],
+        attacks_color_bb: [0, 2],
         pieces,
         black_to_move: fen_color == "b",
         white_o_o,
@@ -122,6 +125,9 @@ pub fn create_bitboard_from_fen(fen: &str) -> BitBoard {
         half_moves: fen_half_moves.parse().unwrap(),
         full_moves: fen_full_moves.parse().unwrap(),
     };
+    board.initialize_attacks();
+
+    return board;
 }
 
 fn get_pieces_from_fen(fen_pieces: &str) -> (u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64) {

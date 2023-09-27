@@ -1,14 +1,14 @@
-use crate::board::{BitBoard, BLACK, get_ones_indices, Move, WHITE};
+use crate::board::{Board, BLACK, get_ones_indices, Move, WHITE};
 use crate::board::masks::{A_FILE, H_FILE, FIFTH_RANK, SECOND_RANK, SEVENTH_RANK, FOURTH_RANK};
 use crate::board::moves::{construct_move, pop_lsb_idx, PromotionPiece, SpecialMove};
 use crate::board::pieces::PieceType;
 use crate::board::pieces::PieceType::Pawn;
 
-pub fn get_pawn_moves(board: &BitBoard) -> Vec<Move> {
+pub fn get_pawn_moves(board: &Board) -> Vec<Move> {
     return if board.black_to_move { get_black_pawn_moves(board) } else { get_white_pawn_moves(board) };
 }
 
-pub fn get_white_pawn_moves(board: &BitBoard) -> Vec<Move> {
+pub fn get_white_pawn_moves(board: &Board) -> Vec<Move> {
     let white_pawns = board.pieces_bb[WHITE][PieceType::Pawn as usize];
     let white_pieces = white_pawns
         | board.pieces_bb[WHITE][PieceType::Knight as usize]
@@ -39,7 +39,7 @@ pub fn get_white_pawn_moves(board: &BitBoard) -> Vec<Move> {
             if dest < 56 {
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::None));
             }
-            if dest >= 56 {
+            else {
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::Promotion));
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Bishop, SpecialMove::Promotion));
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Rook, SpecialMove::Promotion));
@@ -76,7 +76,7 @@ pub fn get_white_pawn_moves(board: &BitBoard) -> Vec<Move> {
             if dest < 56 {
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::None));
             }
-            if dest >= 56 {
+            else {
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::Promotion));
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Bishop, SpecialMove::Promotion));
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Rook, SpecialMove::Promotion));
@@ -96,7 +96,7 @@ pub fn get_white_pawn_moves(board: &BitBoard) -> Vec<Move> {
             if dest < 56 {
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::None));
             }
-            if dest >= 56 {
+            else {
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::Promotion));
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Bishop, SpecialMove::Promotion));
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Rook, SpecialMove::Promotion));
@@ -122,7 +122,7 @@ pub fn get_white_pawn_moves(board: &BitBoard) -> Vec<Move> {
     return pawn_moves;
 }
 
-pub fn get_black_pawn_moves(board: &BitBoard) -> Vec<Move> {
+pub fn get_black_pawn_moves(board: &Board) -> Vec<Move> {
     let black_pawns = board.pieces_bb[BLACK][PieceType::Pawn as usize];
 
     let white_pieces = board.pieces_bb[WHITE][PieceType::Pawn as usize]
@@ -155,7 +155,7 @@ pub fn get_black_pawn_moves(board: &BitBoard) -> Vec<Move> {
             if dest > 7 {
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::None));
             }
-            if dest <= 7 {
+            else{
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::Promotion));
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Bishop, SpecialMove::Promotion));
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Rook, SpecialMove::Promotion));
@@ -193,7 +193,7 @@ pub fn get_black_pawn_moves(board: &BitBoard) -> Vec<Move> {
             if dest > 7 {
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::None));
             }
-            if dest <= 7 {
+            else {
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::Promotion));
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Bishop, SpecialMove::Promotion));
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Rook, SpecialMove::Promotion));
@@ -213,7 +213,7 @@ pub fn get_black_pawn_moves(board: &BitBoard) -> Vec<Move> {
             if dest > 7 {
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::None));
             }
-            if dest <= 7 {
+            else {
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Knight, SpecialMove::Promotion));
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Bishop, SpecialMove::Promotion));
                 pawn_moves.push(construct_move(dest, origin, PromotionPiece::Rook, SpecialMove::Promotion));
@@ -224,7 +224,7 @@ pub fn get_black_pawn_moves(board: &BitBoard) -> Vec<Move> {
 
     // en passant
     {
-        if (board.en_passant != 0) {
+        if board.en_passant != 0 {
             let eligible_pawns = black_pawns & FOURTH_RANK;
             let attacks_from_ep_square = (board.en_passant & !A_FILE) << 9 | (board.en_passant & !H_FILE) << 7 ;
             let squares = eligible_pawns & attacks_from_ep_square;
@@ -239,12 +239,23 @@ pub fn get_black_pawn_moves(board: &BitBoard) -> Vec<Move> {
     return pawn_moves;
 }
 
-fn get_pawn_attacks(board: &BitBoard) -> u64 {
-    let eligible_pawns = board.pieces_bb[board.black_to_move as usize][Pawn as usize] & !H_FILE;
-    let pawn_attack_squares_left = eligible_pawns >> 9 & board.pieces_color[WHITE];
 
-    let eligible_pawns = board.pieces_bb[board.black_to_move as usize][Pawn as usize] & !H_FILE;
-    let pawn_attack_squares_right = eligible_pawns >> 7 & board.pieces_color[WHITE];
+pub fn get_pawn_attacks(board: &Board, color: usize) -> u64 {
+    return if color == BLACK {
+        let eligible_pawns_left = board.pieces_color_bb[BLACK] & !H_FILE;
+        let eligible_pawns_right = board.pieces_color_bb[BLACK] & !A_FILE;
 
-    return pawn_attack_squares_left >> pawn_attack_squares_right;
+        let pawn_attack_squares_left = eligible_pawns_left >> 9 & board.pieces_color_bb[WHITE];
+        let pawn_attack_squares_right = eligible_pawns_right >> 7 & board.pieces_color_bb[WHITE];
+
+        pawn_attack_squares_left | pawn_attack_squares_right
+    } else {
+        let eligible_pawns_left = board.pieces_color_bb[WHITE] & !A_FILE;
+        let eligible_pawns_right = board.pieces_bb[WHITE][Pawn as usize] & !H_FILE;
+
+        let pawn_attack_squares_left = eligible_pawns_left << 7 & board.pieces_color_bb[BLACK];
+        let pawn_attack_squares_right = eligible_pawns_right << 9 & board.pieces_color_bb[BLACK];
+
+        pawn_attack_squares_left | pawn_attack_squares_right
+    };
 }

@@ -7,7 +7,6 @@ use bitvec::vec::BitVec;
 use bitvec::view::BitViewSized;
 use crate::board::{Move, print_bb};
 use crate::board::moves::PromotionPiece::Knight;
-use crate::board::pieces::PieceType;
 use crate::board::squares::SQUARES;
 
 #[derive(PartialEq)]
@@ -32,9 +31,9 @@ pub enum SpecialMove {
 // 14-15 - special move flag (1-promotion, 2-en passant, 3-castling)
 pub fn construct_move(dest: u8, origin: u8, promotion_piece: PromotionPiece, special_move_flag: SpecialMove) -> u16 {
     let x = ((dest as u16) << 10)
-       + ((origin as u16) << 4)
-       + ((promotion_piece as u16) << 2)
-       + special_move_flag as u16;
+        + ((origin as u16) << 4)
+        + ((promotion_piece as u16) << 2)
+        + special_move_flag as u16;
 
     return x;
 }
@@ -71,15 +70,29 @@ pub fn generate_moves(square: u64, attacks: u64, current_pieces: u64) -> Vec<Mov
 
     return moves;
 }
+
 pub fn get_moves_for_piece_type(pieces_bb: u64, attacks: [u64; 64], current_pieces: u64) -> Vec<Move> {
     let mut pieces = pieces_bb;
     let mut moves: Vec<Move> = Vec::new();
 
-    while pieces != 0 { let piece_idx = pop_lsb_idx(&mut pieces);
-       moves.append(&mut generate_moves(piece_idx, attacks[piece_idx as usize], current_pieces));
+    while pieces != 0 {
+        let piece_idx = pop_lsb_idx(&mut pieces);
+        moves.append(&mut generate_moves(piece_idx, attacks[piece_idx as usize], current_pieces));
     }
 
     return moves;
+}
+
+pub fn get_attacks(pieces_bb: u64, attacks: [u64; 64]) -> u64 {
+    let mut pieces = pieces_bb;
+    let mut attacks_bb = 0u64;
+
+    while pieces != 0 {
+        let piece_idx = pop_lsb_idx(&mut pieces);
+        attacks_bb |= attacks[piece_idx as usize];
+    }
+
+    return attacks_bb;
 }
 
 pub fn get_slider_moves(pieces_bb: u64, get_attacks: fn(square: u64, occupancy: u64) -> u64, occupancy: u64, current_pieces: u64) -> Vec<Move> {
@@ -90,8 +103,8 @@ pub fn get_slider_moves(pieces_bb: u64, get_attacks: fn(square: u64, occupancy: 
         let piece_idx = pop_lsb_idx(&mut pieces);
         let piece_attacks = get_attacks(piece_idx, occupancy);
 
-        println!("piece idx {}", piece_idx);
-        print_bb(piece_attacks);
+        // println!("piece idx {}", piece_idx);
+        // print_bb(piece_attacks);
 
         moves.append(&mut generate_moves(piece_idx, piece_attacks, current_pieces));
     }

@@ -9,6 +9,7 @@ const NOT_GH_FILE: u64 = !G_FILE & !H_FILE;
 
 fn get_knight_attacks_for_square(s: u64) -> u64 {
     let mut result: u64 = 0;
+
     result |= (s << 17) & NOT_A_FILE; // up up right
     result |= (s << 10) & NOT_AB_FILE; // up right right
     result |= (s >> 6) & NOT_AB_FILE; // down right right

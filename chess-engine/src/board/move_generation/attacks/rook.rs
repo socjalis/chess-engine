@@ -4,6 +4,7 @@ use bitvec::order::{Lsb0};
 use bitvec::view::BitViewSized;
 use crate::board::masks::{A_FILE, EIGHTH_RANK, FIRST_RANK, H_FILE, JESUS, JESUS45};
 use crate::board::move_generation::attacks::rook::rook_magics::{BISHOP_MAGICS, ROOK_MAGICS};
+use crate::board::moves::pop_lsb_idx;
 use crate::board::print_bb;
 
 pub mod rook_magics;
@@ -37,7 +38,7 @@ pub fn get_bishop_idx(square: u64, occupancy: u64) -> usize {
     unsafe {
         let info = BISHOP_SQUARE_INFO[square as usize];
 
-        println!("info bishop {}, {:?}", square, info);
+        // println!("info bishop {}, {:?}", square, info);
 
         return (info.magic.wrapping_mul(occupancy & info.mask) >> info.shift) as usize;
     };
@@ -60,13 +61,28 @@ pub fn get_bishop_attacks(square: u64, occupancy: u64) -> u64 {
 
     let occupied_relevant = JESUS45[square as usize] & occupancy & !edges & !(1 << square);
 
-    println!("bishop hash: {}", get_bishop_idx(square, occupied_relevant));
-    print_bb(occupied_relevant);
+    // println!("bishop hash: {}", get_bishop_idx(square, occupied_relevant));
+    // print_bb(occupied_relevant);
 
     let info = unsafe { BISHOP_SQUARE_INFO[square as usize] };
 
 
     return unsafe { return BISHOP_ATTACKS[info.offset as usize + get_bishop_idx(square, occupied_relevant)]; };
+}
+
+pub fn get_slider_attacks_for_bb(
+    bb: u64,
+    get_attacks: fn(square: u64, occupancy: u64) -> u64,
+    occupancy: u64
+) -> u64 {
+    let mut pieces = bb;
+    let mut attacks = 0;
+
+    while pieces != 0 {
+        attacks |= get_attacks(pop_lsb_idx(&mut pieces), occupancy);
+    }
+
+    return attacks;
 }
 
 pub static mut ROOK_ATTACKS: [u64; 102400] = [0u64; 102400];
@@ -112,8 +128,8 @@ fn initiate_slide_attacks(
             | A_FILE * (get_file(square) != 0) as u64
             | H_FILE * (get_file(square) != 7) as u64;
 
-        println!("{}", square);
-        print_bb(edges);
+        // println!("{}", square);
+        // print_bb(edges);
 
 
         slide_attacks_info[square as usize].magic = magics[square as usize];
